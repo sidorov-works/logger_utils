@@ -42,3 +42,6 @@ htmlcov/
 
 # Git
 *.orig
+
+# OS generated files
+.DS_Store
