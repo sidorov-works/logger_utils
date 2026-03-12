@@ -1,18 +1,18 @@
 # logger-utils
 
-Кастомный логгер с поддержкой многопроцессной записи в файл и Docker-окружения.
+Утилита для настройки логирования в Python-приложениях с поддержкой многопроцессной записи и Docker-окружения.
 
 ## Возможности
 
 - **Многопроцессная ротация файлов** — через `ConcurrentRotatingFileHandler` (без гонок)
 - **Docker-режим** — автоматическое переключение на stdout при `DOCKER_ENV=true`
 - **Единая конфигурация** — настройка корневого логера для всего приложения
-- **Имена процессов** — декоратор `wrap_logger_methods` для добавления `process_name` в логи
+- **Автоматическое имя модуля** — через `%(name)s` в форматтере
 
 ## Установка
 
 ```bash
-pip install git+https://github.com/sidorov-works/logger_utils.git@v0.1.6
+pip install git+https://github.com/your-org/logger-utils.git@v0.1.7
 ```
 
 ## Использование
@@ -20,45 +20,41 @@ pip install git+https://github.com/sidorov-works/logger_utils.git@v0.1.6
 ### 1. Настройка при запуске приложения
 
 ```python
-from logger_utils import configure_root, get_logger, wrap_logger_methods
+from logger_utils import configure_root, get_logger
+from pathlib import Path
 
-# ОДИН РАЗ при старте приложения
+# Один раз при старте
 configure_root(
-    level="INFO",                    # уровень логирования
-    log_file="logs/myapp.log",       # путь к файлу (игнорируется в Docker)
-    docker_mode=None,                 # None = автоопределение по DOCKER_ENV
-    fmt='%(asctime)s | %(levelname)-8s | %(process_name)-12s | %(message)s'
+    level="INFO",
+    log_file=str(Path("logs") / "app.log"),
+    fmt='%(asctime)s | %(name)s | %(levelname)-8s | %(message)s'
 )
-```
 
-### 2. Получение логера в модулях
-
-```python
-# В любом модуле проекта
-from logger_utils import get_logger
-
+# Получение логера
 logger = get_logger(__name__)
-logger.info("Сервис запущен")  # попадёт в настроенный файл/stdout
 ```
 
-### 3. Добавление имени процесса (для воркеров)
+### 2. В модулях проекта
 
 ```python
-from logger_utils import wrap_logger_methods
+# shared/catalog_api.py
+import logging
+logger = logging.getLogger(__name__)  # имя = "shared.catalog_api"
 
-worker_logger = wrap_logger_methods(logger, "worker-1")
-worker_logger.info("Обработка задачи")  # в логах появится process_name=worker-1
+logger.info("Сообщение")  # попадёт в настроенный файл
 ```
 
-### 4. Логеры из других пакетов
+### 3. В Docker-окружении
 
-```python
-from retryable_http_client import RetryableHTTPClient
-
-# Этот клиент использует стандартный logging.getLogger()
-# Он автоматически получит все настройки от корневого логера!
-client = RetryableHTTPClient()
+```yaml
+# docker-compose.yml
+services:
+  app:
+    environment:
+      - DOCKER_ENV=true  # переключает на stdout
 ```
+
+Без этой переменной логер пишет в файл (локальная разработка).
 
 ## Параметры configure_root
 
@@ -67,7 +63,7 @@ client = RetryableHTTPClient()
 | `level` | `int` или `str` | `logging.INFO` | Уровень логирования |
 | `log_file` | `str` или `None` | `"logs/app.log"` | Путь к файлу (вне Docker) |
 | `docker_mode` | `bool` или `None` | `None` | `True` = только stdout, `False` = файл, `None` = авто по `DOCKER_ENV` |
-| `fmt` | `str` | `'%(asctime)s | %(levelname)-8s | %(process_name)-12s | %(message)s'` | Формат логов |
+| `fmt` | `str` | `'%(asctime)s \| %(name)s \| %(levelname)-8s \| %(message)s'` | Формат логов |
 
 ## Режимы работы
 

@@ -10,8 +10,8 @@
 
 # Это то, что будет доступно при импорте "from logger_utils import *"
 __all__ = [
-    "get_logger"
-    "wrap_logger_methods"
+    "get_logger",
+    "wrap_logger_methods",
     "configure_root"
 ]
 
@@ -27,7 +27,7 @@ def configure_root(
     level: Union[int, str] = logging.INFO,
     log_file: Optional[str] = None,
     docker_mode: Optional[bool] = None,
-    fmt: str = '%(asctime)s | %(levelname)-8s | %(process_name)-12s | %(message)s'
+    fmt = '%(asctime)s | %(name)s | %(levelname)-8s | %(message)s'
 ) -> None:
     """
     Настраивает корневой логер для всего приложения.
@@ -46,7 +46,10 @@ def configure_root(
     root_logger.handlers.clear()  # убираем стандартные
     
     # Создаем форматтер
-    formatter = logging.Formatter(fmt)
+    formatter = logging.Formatter(
+        fmt, 
+        datefmt='%Y-%m-%d %H:%M:%S' # без миллисекунд
+    )
     
     if docker_mode:
         # Только stdout
@@ -85,23 +88,3 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
     Просто получает логер, настройки уже применены к корню.
     """
     return logging.getLogger(name)
-
-
-def wrap_logger_methods(logger, process_name: str):
-    """Декоратор для автоматической подстановки process_name в extra-поля"""
-    def proc_name_dec(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            # Безопасно добавляем process_name в extra, сохраняя существующие поля
-            extra = kwargs.get('extra', {})
-            extra['process_name'] = process_name
-            kwargs['extra'] = extra
-            return func(*args, **kwargs)
-        return wrapper
-    
-    # Применяем ко всем методам логирования
-    for method_name in ['debug', 'info', 'warning', 'error', 'critical']:
-        method = getattr(logger, method_name)
-        setattr(logger, method_name, proc_name_dec(method))
-    
-    return logger
