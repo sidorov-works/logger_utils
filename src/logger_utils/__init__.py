@@ -8,10 +8,11 @@
 - Автоматической подстановки process_name через декоратор
 """
 
-# Это то, что будет доступно при "from retryable_http_client import *"
+# Это то, что будет доступно при импорте "from logger_utils import *"
 __all__ = [
-    "logger",
+    "get_logger"
     "wrap_logger_methods"
+    "configure_root"
 ]
 
 import logging
@@ -22,96 +23,69 @@ from functools import wraps
 from pathlib import Path
 
 
-# Логер для записи в файл (без докера)
-def setup_logger(
-    name: Optional[str] = None,
-    log_file: str = Path("logs") / "app.log",
-    level: int = logging.DEBUG, 
-    fmt: str = '%(asctime)s | %(levelname)-8s | %(process_name)-12s | %(message)s',
-    max_bytes: int = 10 * 1024 * 1024,
-    backup_count: int = 5
-) -> logging.Logger:
+def configure_root(
+    level: Union[int, str] = logging.INFO,
+    log_file: Optional[str] = None,
+    docker_mode: Optional[bool] = None,
+    fmt: str = '%(asctime)s | %(levelname)-8s | %(process_name)-12s | %(message)s'
+) -> None:
     """
-    Безопасный логгер для многопроцессной среды.
-    Особенности:
-    - Использует блокировки для безопасной записи
-    - Добавляет имя процесса в логи
-    - Поддерживает ротацию
+    Настраивает корневой логер для всего приложения.
     """
-    try:
+    # Определяем режим
+    if docker_mode is None:
+        docker_mode = os.environ.get('DOCKER_ENV') == 'true'
+    
+    # Устанавливаем уровень
+    if isinstance(level, str):
+        level = getattr(logging, level.upper(), logging.INFO)
+    
+    # Получаем корневой логер
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+    root_logger.handlers.clear()  # убираем стандартные
+    
+    # Создаем форматтер
+    formatter = logging.Formatter(fmt)
+    
+    if docker_mode:
+        # Только stdout
+        console = logging.StreamHandler()
+        console.setFormatter(formatter)
+        console.setLevel(level)
+        root_logger.addHandler(console)
+    else:
+        # Файл + консоль
+        if log_file is None:
+            log_file = str(Path("logs") / "app.log")
+        
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
         
-        logger = logging.getLogger(name)
-        logger.setLevel(level)  # Используем переданный уровень
-        
-        # Удаляем старые обработчики
-        logger.handlers.clear()
-        
-        # Потокобезопасный ротирующий обработчик
-        handler = ConcurrentRotatingFileHandler(
+        # Файловый handler
+        file_handler = ConcurrentRotatingFileHandler(
             log_file,
-            maxBytes=max_bytes,
-            backupCount=backup_count,
+            maxBytes=10*1024*1024,
+            backupCount=5,
             encoding='utf-8',
             use_gzip=True
         )
-        formatter = logging.Formatter(fmt)
-        handler.setFormatter(formatter)
-        handler.setLevel(level)  # Устанавливаем уровень для хендлера
-        logger.addHandler(handler)
+        file_handler.setFormatter(formatter)
+        file_handler.setLevel(level)
+        root_logger.addHandler(file_handler)
         
-        # Дублируем в консоль с цветами
+        # Консоль
         console = logging.StreamHandler()
         console.setFormatter(logging.Formatter('%(message)s'))
-        console.setLevel(level)  # Устанавливаем уровень для консоли
-        logger.addHandler(console)
-        
-        return logger
-    except Exception as e:
-        logging.error(f"Logger setup failed: {e}")
-        return logging.getLogger(name or "root")
-    
-
-def get_logger(
-        name: Optional[str] = None,
-        level: Union[int, str] = logging.DEBUG
-        ) -> logging.Logger:
-    """
-    Автоматически выбирает оптимальный способ логирования:
-    - В продакшене (DOCKER_ENV=True) пишет только в stdout, Docker сам собирает
-    - В разработке использует ConcurrentRotatingFileHandler + консоль
-    """
-    if isinstance(level, int):
-        log_level = level
-    elif isinstance(level, str):
-        log_level = getattr(logging, level.upper(), logging.DEBUG)
-    else:
-        log_level = logging.DEBUG
-    
-    if os.environ.get('DOCKER_ENV') == 'true':
-        # В Docker - только stdout, без файлов
-        logger = logging.getLogger(name)
-        logger.setLevel(log_level)
-        logger.handlers.clear()
-        
-        # Единственный handler - stdout
-        console = logging.StreamHandler()
-        console.setFormatter(logging.Formatter(
-            '%(asctime)s | %(levelname)-8s | %(process_name)-12s | %(message)s'
-        ))
         console.setLevel(level)
-        logger.addHandler(console)
-        
-        return logger
-    else:
-        # Вне Docker - пишем в файлы как раньше
-        return setup_logger(
-            name=name,
-            level=log_level
-        )
+        root_logger.addHandler(console)
 
-# Создаем готовый инстанс для импорта
-logger = get_logger()
+
+def get_logger(name: Optional[str] = None) -> logging.Logger:
+    """
+    Просто получает логер, настройки уже применены к корню.
+    """
+    return logging.getLogger(name)
+
 
 def wrap_logger_methods(logger, worker_name: str):
     """Декоратор для автоматической подстановки process_name в extra-поля"""

@@ -1,65 +1,94 @@
 # logger-utils
 
-Кастомный логгер для Python-приложений с поддержкой многопроцессной записи и Docker-окружения.
+Кастомный логгер с поддержкой многопроцессной записи в файл и Docker-окружения.
 
 ## Возможности
 
-- **Многопроцессная запись** — потокобезопасная ротация файлов через `ConcurrentRotatingFileHandler`
+- **Многопроцессная ротация файлов** — через `ConcurrentRotatingFileHandler` (без гонок)
 - **Docker-режим** — автоматическое переключение на stdout при `DOCKER_ENV=true`
-- **Уровни логирования** — настраиваются через параметры
-- **Имена процессов** — автоматическая подстановка через декоратор `wrap_logger_methods`
-- **Готовый инстанс** — можно импортировать и сразу использовать
+- **Единая конфигурация** — настройка корневого логера для всего приложения
+- **Имена процессов** — декоратор `wrap_logger_methods` для добавления `process_name` в логи
 
 ## Установка
 
 ```bash
-pip install git+https://github.com/sidorov-works/logger_utils.git@v0.1.4
+pip install git+https://github.com/sidorov-works/logger_utils.git@v0.1.5
 ```
 
-## Быстрый старт
+## Использование
+
+### 1. Настройка при запуске приложения
 
 ```python
-from logger_utils import logger, wrap_logger_methods
+from logger_utils import configure_root, get_logger, wrap_logger_methods
 
-# Использование готового логера
-logger.info("Сервис запущен")
+# ОДИН РАЗ при старте приложения
+configure_root(
+    level="INFO",                    # уровень логирования
+    log_file="logs/myapp.log",       # путь к файлу (игнорируется в Docker)
+    docker_mode=None,                 # None = автоопределение по DOCKER_ENV
+    fmt='%(asctime)s | %(levelname)-8s | %(process_name)-12s | %(message)s'
+)
+```
 
-# Создание логера для воркера
+### 2. Получение логера в модулях
+
+```python
+# В любом модуле проекта
+from logger_utils import get_logger
+
+logger = get_logger(__name__)
+logger.info("Сервис запущен")  # попадёт в настроенный файл/stdout
+```
+
+### 3. Добавление имени процесса (для воркеров)
+
+```python
+from logger_utils import wrap_logger_methods
+
 worker_logger = wrap_logger_methods(logger, "worker-1")
 worker_logger.info("Обработка задачи")  # в логах появится process_name=worker-1
 ```
 
-## API
+### 4. Логеры из других пакетов
 
-### `get_logger(name: Optional[str] = None, level: Union[int, str] = logging.DEBUG) -> logging.Logger`
+```python
+from retryable_http_client import RetryableHTTPClient
 
-Создает логер с автоматическим выбором режима:
-- `DOCKER_ENV=true` — только stdout
-- иначе — файл + консоль
+# Этот клиент использует стандартный logging.getLogger()
+# Он автоматически получит все настройки от корневого логера!
+client = RetryableHTTPClient()
+```
 
-### `logger` — готовый инстанс для импорта
+## Параметры configure_root
 
-### `wrap_logger_methods(logger, worker_name: str) -> logging.Logger`
+| Параметр | Тип | По умолчанию | Описание |
+|----------|-----|--------------|----------|
+| `level` | `int` или `str` | `logging.INFO` | Уровень логирования |
+| `log_file` | `str` или `None` | `"logs/app.log"` | Путь к файлу (вне Docker) |
+| `docker_mode` | `bool` или `None` | `None` | `True` = только stdout, `False` = файл, `None` = авто по `DOCKER_ENV` |
+| `fmt` | `str` | `'%(asctime)s | %(levelname)-8s | %(process_name)-12s | %(message)s'` | Формат логов |
 
-Добавляет `process_name` в каждую запись лога.
+## Режимы работы
 
-## Конфигурация через окружение
+### Локальная разработка
+```bash
+# Без DOCKER_ENV
+python main.py  # пишет в файл + дублирует в консоль
+```
 
-- `DOCKER_ENV=true` — переключает в Docker-режим (stdout)
+### Docker/production
+```bash
+DOCKER_ENV=true python main.py  # только stdout, Docker сам собирает логи
+```
 
 ## Зависимости
 
 - `concurrent-log-handler>=0.9.20`
 
-## Разработка
+## Версионирование
 
-```bash
-git clone https://github.com/your-org/logger-utils.git
-cd logger-utils
-python -m venv venv
-source venv/bin/activate  # или venv\Scripts\activate на Windows
-pip install -e .
-```
+Семантическое версионирование. Теги: `v0.1.0`, `v0.1.1` и т.д.
 
 ## Лицензия
 
