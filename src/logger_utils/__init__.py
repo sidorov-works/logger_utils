@@ -87,14 +87,14 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
     return logging.getLogger(name)
 
 
-def wrap_logger_methods(logger, worker_name: str):
+def wrap_logger_methods(logger, process_name: str):
     """Декоратор для автоматической подстановки process_name в extra-поля"""
     def proc_name_dec(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
             # Безопасно добавляем process_name в extra, сохраняя существующие поля
             extra = kwargs.get('extra', {})
-            extra['process_name'] = worker_name
+            extra['process_name'] = process_name
             kwargs['extra'] = extra
             return func(*args, **kwargs)
         return wrapper
