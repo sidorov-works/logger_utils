@@ -12,7 +12,7 @@
 ## Установка
 
 ```bash
-pip install git+https://github.com/sidorov-works/logger-utils.git@v0.1.7
+pip install git+https://github.com/sidorov-works/logger_utils@v0.1.7
 ```
 
 ## Использование
