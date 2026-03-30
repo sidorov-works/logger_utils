@@ -1,62 +1,56 @@
-# logger_utils/__init__.py
-
 """
 Кастомный логгер с поддержкой:
 - Многопроцессной записи в файл (локальная разработка)
 - Docker-окружения (только stdout)
-- Управления уровнем логирования через config.LOGGING_LEVEL
-- Автоматической подстановки process_name через декоратор
 """
 
-# Это то, что будет доступно при импорте "from logger_utils import *"
-__all__ = [
-    "get_logger",
-    "wrap_logger_methods",
-    "configure_root"
-]
+__all__ = ["get_logger"]
 
 import logging
 import os
 from concurrent_log_handler import ConcurrentRotatingFileHandler
 from typing import Optional, Union
-from functools import wraps
 from pathlib import Path
 
 
-def configure_root(
+def get_logger(
+    name: Optional[str] = None,
     level: Union[int, str] = logging.INFO,
     log_file: Optional[str] = None,
     docker_mode: Optional[bool] = None,
-    fmt = '%(asctime)s | %(name)s | %(levelname)-8s | %(message)s'
-) -> None:
+    fmt: str = '%(asctime)s | %(name)s | %(levelname)-8s | %(message)s'
+) -> logging.Logger:
     """
-    Настраивает корневой логер для всего приложения.
-    """
-    # Определяем режим
-    if docker_mode is None:
-        docker_mode = os.environ.get('DOCKER_ENV') == 'true'
+    Создает и возвращает настроенный логер.
     
+    Args:
+        name: Имя логера
+        level: Уровень логирования
+        log_file: Путь к файлу лога (если None и не docker_mode, то logs/app.log)
+        docker_mode: Режим Docker (если None, берется из DOCKER_ENV)
+        fmt: Формат сообщений
+    
+    Returns:
+        logging.Logger: Настроенный логер
+    """
     # Устанавливаем уровень
     if isinstance(level, str):
         level = getattr(logging, level.upper(), logging.INFO)
     
-    # Получаем корневой логер
-    root_logger = logging.getLogger()
-    root_logger.setLevel(level)
-    root_logger.handlers.clear()  # убираем стандартные
+    # Создаем логер
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.handlers.clear()
     
     # Создаем форматтер
-    formatter = logging.Formatter(
-        fmt, 
-        datefmt='%Y-%m-%d %H:%M:%S' # без миллисекунд
-    )
+    formatter = logging.Formatter(fmt, datefmt='%Y-%m-%d %H:%M:%S')
     
     if docker_mode:
         # Только stdout
         console = logging.StreamHandler()
         console.setFormatter(formatter)
         console.setLevel(level)
-        root_logger.addHandler(console)
+        logger.addHandler(console)
     else:
         # Файл + консоль
         if log_file is None:
@@ -74,17 +68,12 @@ def configure_root(
         )
         file_handler.setFormatter(formatter)
         file_handler.setLevel(level)
-        root_logger.addHandler(file_handler)
+        logger.addHandler(file_handler)
         
-        # Консоль
+        # Консоль (только сообщение, без формата)
         console = logging.StreamHandler()
         console.setFormatter(logging.Formatter('%(message)s'))
         console.setLevel(level)
-        root_logger.addHandler(console)
-
-
-def get_logger(name: Optional[str] = None) -> logging.Logger:
-    """
-    Просто получает логер, настройки уже применены к корню.
-    """
-    return logging.getLogger(name)
+        logger.addHandler(console)
+    
+    return logger
