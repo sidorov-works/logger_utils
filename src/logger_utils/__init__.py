@@ -23,7 +23,7 @@ def get_logger(
     name: Optional[str] = None,
     process_name: Optional[str] = None,
     level: Union[int, str] = logging.INFO,
-    log_file: Optional[str] = None,
+    log_file: Optional[str] = str(Path("logs") / "app.log"),
     docker_mode: Optional[bool] = None,
     fmt: str = '%(asctime)s | %(process_name)-15s | %(name)-30s | %(levelname)-8s | %(message)s'
 ) -> logging.Logger:
@@ -44,9 +44,6 @@ def get_logger(
     if not _configured:
         _configured = True
         
-        if docker_mode is None:
-            docker_mode = os.environ.get('DOCKER_ENV') == 'true'
-        
         if isinstance(level, str):
             level = getattr(logging, level.upper(), logging.INFO)
         
@@ -61,9 +58,6 @@ def get_logger(
             console.setFormatter(formatter)
             root_logger.addHandler(console)
         else:
-            if log_file is None:
-                log_file = str(Path("logs") / "app.log")
-            
             os.makedirs(os.path.dirname(log_file), exist_ok=True)
             
             file_handler = ConcurrentRotatingFileHandler(
