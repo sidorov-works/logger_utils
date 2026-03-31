@@ -1,14 +1,14 @@
 # logger-utils
 
-Утилита для настройки логирования в Python-приложениях с поддержкой многопроцессной записи и Docker-окружения.
+Утилита для настройки логирования в Python-приложениях с поддержкой многопроцессной записи, Docker-окружения и автоматической подстановки имени процесса.
 
 ## Возможности
 
 - **Многопроцессная ротация файлов** — через `ConcurrentRotatingFileHandler` (без гонок)
 - **Docker-режим** — автоматическое переключение на stdout при `DOCKER_ENV=true`
-- **Гибкая настройка** — каждый логер создается с собственными параметрами
-- **Автоматическое создание директорий** — при указании пути к файлу
-- **Отсутствие глобального состояния** — нет зависимости от конфигов проекта
+- **Автоматическая подстановка имени процесса** — через `LoggerAdapter`
+- **Однократная настройка** — первый вызов `get_logger()` настраивает корневой логер
+- **Простота** — одна функция для всего
 
 ## Установка
 
@@ -18,152 +18,105 @@ pip install git+https://github.com/sidorov-works/logger_utils@v0.2.0
 
 ## Использование
 
-### 1. Создание логера в модуле
-
-```python
-from logger_utils import get_logger
-
-# Простой вариант — использует настройки по умолчанию
-logger = get_logger(__name__)
-
-logger.info("Сообщение")
-logger.error("Ошибка", exc_info=True)
-```
-
-### 2. С кастомными параметрами
+### 1. В точке входа процесса (воркер, CLI-скрипт, main)
 
 ```python
 from logger_utils import get_logger
 from pathlib import Path
 
 logger = get_logger(
-    name="MY_SERVICE",
-    level="DEBUG",
-    log_file=str(Path("logs") / "service.log"),
-    docker_mode=False,  # принудительно файл
-    fmt='%(asctime)s | %(name)s | %(levelname)-8s | %(message)s'
+    process_name="MY_WORKER",           # имя процесса (подставляется в логи)
+    level="INFO",                       # уровень логирования
+    log_file=str(Path("logs") / "app.log"),
+    docker_mode=False,                  # или None для автоопределения по DOCKER_ENV
+    fmt='%(asctime)s | %(process_name)-15s | %(name)-30s | %(levelname)-8s | %(message)s'
 )
+
+logger.info("Worker started")
+logger.error("Something went wrong", exc_info=True)
 ```
 
-### 3. В Docker-окружении
+### 2. В shared модулях (библиотеках, утилитах)
 
-```yaml
-# docker-compose.yml
-services:
-  app:
-    environment:
-      - DOCKER_ENV=true  # переключает на stdout
-```
-
-В коде:
 ```python
-logger = get_logger(__name__)  # автоматически определит DOCKER_ENV
+import logging
+
+logger = logging.getLogger(__name__)   # стандартный подход
+
+def do_something():
+    logger.info("Doing something")     # имя процесса подставится автоматически
 ```
 
-## API
+### 3. В других модулях того же процесса (если нужен логер без имени процесса)
 
-### `get_logger(name=None, level=logging.INFO, log_file=None, docker_mode=None, fmt=None)`
+```python
+from logger_utils import get_logger
 
-Создает и возвращает настроенный логер.
+logger = get_logger()                  # обычный логер, без подстановки process_name
+logger.info("Some message")
+```
+
+## Параметры get_logger
 
 | Параметр | Тип | По умолчанию | Описание |
 |----------|-----|--------------|----------|
-| `name` | `str` или `None` | `None` | Имя логера. Если `None`, возвращает корневой логер |
-| `level` | `int` или `str` | `logging.INFO` | Уровень логирования (`"DEBUG"`, `"INFO"`, `"WARNING"`, `"ERROR"`, `"CRITICAL"`) |
-| `log_file` | `str` или `None` | `None` | Путь к файлу. При `None` и `docker_mode=False` — `"logs/app.log"` |
-| `docker_mode` | `bool` или `None` | `None` | `True` = только stdout, `False` = файл, `None` = автоопределение по переменной `DOCKER_ENV` |
-| `fmt` | `str` или `None` | `None` | Формат логов. При `None` — стандартный формат |
-
-#### Стандартный формат
-```
-'%(asctime)s | %(name)s | %(levelname)-8s | %(message)s'
-```
-
-#### Пример вывода
-```
-2025-03-30 15:30:45 | MY_SERVICE | INFO     | Сообщение
-2025-03-30 15:30:46 | MY_SERVICE | ERROR    | Ошибка
-```
+| `process_name` | `str` или `None` | `None` | Имя процесса. Если указан, возвращает `LoggerAdapter` с подстановкой в поле `process_name` |
+| `level` | `int` или `str` | `logging.INFO` | Уровень логирования (только при первом вызове) |
+| `log_file` | `str` или `None` | `None` | Путь к файлу. При `None` и не Docker — `"logs/app.log"` |
+| `docker_mode` | `bool` или `None` | `None` | `True` = только stdout, `False` = файл, `None` = авто по `DOCKER_ENV` |
+| `fmt` | `str` | `'%(asctime)s \| %(process_name)-15s \| %(name)-30s \| %(levelname)-8s \| %(message)s'` | Формат логов |
 
 ## Режимы работы
 
 ### Локальная разработка
+
 ```bash
-# Без DOCKER_ENV
-python main.py  # пишет в файл + дублирует в консоль (только сообщения)
+python my_worker.py
+# Пишет в файл logs/app.log + дублирует в консоль (только сообщения без формата)
 ```
 
 ### Docker/production
+
 ```bash
-DOCKER_ENV=true python main.py  # только stdout, Docker сам собирает логи
+DOCKER_ENV=true python my_worker.py
+# Пишет только в stdout, Docker сам собирает логи
 ```
 
 ### Принудительное указание режима
+
 ```python
 # Только stdout
-logger = get_logger("APP", docker_mode=True)
+logger = get_logger("WORKER", docker_mode=True)
 
-# Только файл
-logger = get_logger("APP", docker_mode=False, log_file="app.log")
+# Только файл с кастомным путем
+logger = get_logger("WORKER", docker_mode=False, log_file="/var/log/app.log")
 ```
 
-## Примеры
+## Пример вывода логов
 
-### Приложение с несколькими модулями
-
-```python
-# main.py
-from logger_utils import get_logger
-
-logger = get_logger("MAIN", level="DEBUG")
-
-def main():
-    logger.info("Application started")
-    # ...
+```
+2025-03-31 10:00:00 | MY_WORKER       | MY_WORKER                        | INFO     | Worker started
+2025-03-31 10:00:01 | MY_WORKER       | shared.queue_client              | INFO     | Pushing item
+2025-03-31 10:00:02 | MY_WORKER       | shared.database                  | DEBUG    | Connecting to DB
+2025-03-31 10:00:03 | MY_WORKER       | MY_WORKER                        | ERROR    | Something went wrong
 ```
 
-```python
-# module.py
-import logging  # можно использовать стандартный logging после настройки
-logger = logging.getLogger(__name__)
+## Как это работает
 
-def do_something():
-    logger.debug("Doing something")
-```
+1. **Первый вызов** `get_logger()` в процессе настраивает корневой логер (добавляет handlers)
+2. **Все последующие вызовы** просто возвращают логер (настройка не повторяется)
+3. **Shared модули** используют стандартный `logging.getLogger(__name__)`
+4. У логеров из shared модулей нет своих handlers, поэтому они прокидывают события корневому логеру
+5. Корневой логер имеет handlers → логи выводятся
+6. Если указан `process_name`, возвращается `LoggerAdapter`, который подставляет его в поле `process_name` каждого сообщения
 
-### Использование с конфигом проекта
+## Преимущества
 
-```python
-# shared/logging.py
-from logger_utils import get_logger
-from shared.config import config
-
-def setup_logger(name: str):
-    return get_logger(
-        name=name,
-        level=config.LOGGING_LEVEL,
-        log_file=config.LOG_PATH / "app.log",
-        docker_mode=config.DOCKER_ENV
-    )
-```
-
-```python
-# w_toxicity_filter/app/main.py
-from shared.logging import setup_logger
-
-logger = setup_logger("W_TOXICITY_FILTER")
-
-# или сразу
-logger = get_logger("W_TOXICITY_FILTER", level="INFO")
-```
-
-## Преимущества подхода
-
-- **Нет глобального состояния** — каждый логер создается явно
-- **Не зависит от конфигов проекта** — все параметры передаются напрямую
-- **Работает везде одинаково** — в разработке, в production, в тестах
-- **Простота использования** — одна функция для всех случаев
-- **Совместимость со стандартным `logging`** — можно использовать `logging.getLogger()` после настройки
+- **Одна функция** — не нужно думать, где вызывать `configure_root`
+- **Стандартный подход в shared модулях** — используется `logging.getLogger(__name__)`
+- **Автоматическая подстановка имени процесса** — не нужно передавать его в каждый вызов
+- **Нет глобальных переменных в коде проекта** — всё состояние скрыто внутри библиотеки
+- **Поддержка многопроцессности** — каждый процесс настраивает свой корневой логер независимо
 
 ## Зависимости
 

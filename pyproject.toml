@@ -1,6 +1,6 @@
 [project]
 name = "logger-utils"
-version = "0.2.0"
+version = "0.2.1"
 description = "Custom logger with multi-process file rotation and Docker support"
 authors = [{name = "Oleg Sidorov", email = "sidorov.works@yandex.ru"}]
 license = {text = "MIT"}
