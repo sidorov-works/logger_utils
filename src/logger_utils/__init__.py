@@ -1,10 +1,9 @@
 # logger_utils/__init__.py
 
 """
-Кастомный логгер с поддержкой:
+Кастомный логгер с поддержбой:
 - Многопроцессной записи в файл (локальная разработка)
 - Docker-окружения (только stdout)
-- Автоматической подстановки имени процесса через LoggerAdapter
 """
 
 __all__ = ["get_logger"]
@@ -19,30 +18,19 @@ _configured = False
 
 
 def get_logger(
-    process_name: Optional[str] = None,
+    name: Optional[str] = None,
     level: Union[int, str] = logging.INFO,
-    log_file: Optional[str] = None,
+    log_file: str = str(Path("logs") / "app.log"),
     docker_mode: Optional[bool] = None,
-    fmt: str = '%(asctime)s | %(process_name)-15s | %(name)-30s | %(levelname)-8s | %(message)s'
-) -> Union[logging.Logger, logging.LoggerAdapter]:
+    fmt: str = '%(asctime)s | %(name)-30s | %(levelname)-8s | %(message)s'
+) -> logging.Logger:
     """
     Возвращает логер. При первом вызове в процессе настраивает корневой логер.
-    
-    Args:
-        process_name: Имя процесса (подставляется в поле process_name)
-        level: Уровень логирования (только при первом вызове)
-        log_file: Путь к файлу лога (только при первом вызове)
-        docker_mode: Режим Docker (только при первом вызове)
-        fmt: Формат сообщений (только при первом вызове)
     """
     global _configured
     
-    # Первый вызов - настройка корневого логера
     if not _configured:
         _configured = True
-        
-        if docker_mode is None:
-            docker_mode = os.environ.get('DOCKER_ENV') == 'true'
         
         if isinstance(level, str):
             level = getattr(logging, level.upper(), logging.INFO)
@@ -77,11 +65,4 @@ def get_logger(
             console.setFormatter(logging.Formatter('%(message)s'))
             root_logger.addHandler(console)
     
-    # Возврат логера
-    if process_name is None:
-        return logging.getLogger()
-    
-    return logging.LoggerAdapter(
-        logging.getLogger(process_name),
-        {'process_name': process_name}
-    )
+    return logging.getLogger(name)
