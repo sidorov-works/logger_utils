@@ -1,12 +1,5 @@
 # logger_utils/__init__.py
 
-"""
-Кастомный логгер с поддержкой:
-- Многопроцессной записи в файл (локальная разработка)
-- Docker-окружения (только stdout)
-- Автоматической подстановки имени процесса через фильтр
-"""
-
 __all__ = ["get_logger"]
 
 import logging
@@ -16,46 +9,20 @@ from typing import Optional, Union
 from pathlib import Path
 
 _configured = False
-_process_name = None
-
-
-class ProcessNameFilter(logging.Filter):
-    """Добавляет process_name в каждую запись лога"""
-    def filter(self, record):
-        record.process_name = _process_name or "unknown"
-        return True
 
 
 def get_logger(
     name: Optional[str] = None,
-    process_name: Optional[str] = None,
     level: Union[int, str] = logging.INFO,
     log_file: Optional[str] = None,
     docker_mode: Optional[bool] = None,
-    fmt: str = '%(asctime)s | %(process_name)-15s | %(name)-30s | %(levelname)-8s | %(message)s'
+    fmt: str = '%(asctime)s | %(name)-30s | %(levelname)-8s | %(message)s'
 ) -> logging.Logger:
     """
     Возвращает логер. При первом вызове настраивает корневой логер.
-    
-    Args:
-        name: Имя логера
-        process_name: Имя процесса. Если не указан, берется из name
-        level: Уровень логирования (только при первом вызове)
-        log_file: Путь к файлу (только при первом вызове)
-        docker_mode: Режим Docker (только при первом вызове)
-        fmt: Формат сообщений (только при первом вызове)
     """
-    global _configured, _process_name
+    global _configured
     
-    # Если process_name не указан, берем из name
-    if process_name is None and name is not None:
-        process_name = name
-    
-    # Запоминаем process_name для фильтра
-    if process_name:
-        _process_name = process_name
-    
-    # Первый вызов - настройка корневого логера
     if not _configured:
         _configured = True
         
@@ -65,9 +32,6 @@ def get_logger(
         root_logger = logging.getLogger()
         root_logger.setLevel(level)
         root_logger.handlers.clear()
-        
-        # Добавляем фильтр
-        root_logger.addFilter(ProcessNameFilter())
         
         formatter = logging.Formatter(fmt, datefmt='%Y-%m-%d %H:%M:%S')
         
